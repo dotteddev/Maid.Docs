@@ -1,0 +1,19 @@
+﻿@page "/"
+@page "/assembly"
+@using System.Reflection
+@using System.Runtime.Loader
+
+<PageTitle>Assembly viewer</PageTitle>
+
+@if (App?.LoadedAssembly == null)
+{
+	
+}
+else
+{
+	<AssemblyInfo Assembly="App?.LoadedAssembly" />
+}
+@code{
+	[CascadingParameter]
+	public App? App { get; set; }
+}

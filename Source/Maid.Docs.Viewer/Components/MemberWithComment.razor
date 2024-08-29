@@ -1,0 +1,6 @@
+﻿@using System.Reflection
+<h3>@Member.Name</h3>
+<p>@Member</p>
+@code {
+	[Parameter] public MemberInfo Member { get; set; } = null!;
+}

@@ -1,0 +1,13 @@
+﻿@using System.Reflection
+<InputFile OnChange="LoadFiles" />
+@code {
+	[CascadingParameter]
+	public App App { get; set; }
+	private async void LoadFiles(InputFileChangeEventArgs e)
+	{
+		var buffer = new byte[e.File.Size];
+		await e.File.OpenReadStream().ReadAsync(buffer);
+		App.LoadedAssembly = Assembly.Load(buffer);
+		App.AssemblyLoaded();
+	}
+}

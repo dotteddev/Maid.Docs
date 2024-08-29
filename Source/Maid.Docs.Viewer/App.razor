@@ -1,0 +1,34 @@
+﻿@using System.Reflection
+<Router AppAssembly="@typeof(App).Assembly">
+    <Found Context="routeData">
+        <CascadingValue Value="this">
+            <RouteView RouteData="@routeData" DefaultLayout="@typeof(MainLayout)" />
+            <FocusOnNavigate RouteData="@routeData" Selector="h1" />
+        </CascadingValue>
+    </Found>
+    <NotFound>
+        <PageTitle>Not found</PageTitle>
+        <LayoutView Layout="@typeof(MainLayout)">
+            <p role="alert">Sorry, there's nothing at this address.</p>
+        </LayoutView>
+    </NotFound>
+</Router>
+
+@code{
+    public Assembly? LoadedAssembly { get; set; }
+    // public List<Action> Actions { get; set; }
+
+
+
+    public void AssemblyLoaded()
+    {
+        StateHasChanged();
+        // foreach (var action in Actions)
+        //     action.Invoke();
+    }
+
+    // public void RegisterForRefresh(Action action)
+    // {
+    //     Actions.Add(action);
+    // }
+}

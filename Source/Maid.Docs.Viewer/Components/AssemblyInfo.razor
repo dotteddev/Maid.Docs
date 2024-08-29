@@ -1,0 +1,13 @@
+﻿@using System.Reflection
+<h3>Assembly name: @Assembly.FullName</h3>
+<h3>Types:</h3>
+<ul>
+	@foreach (var type in Assembly.GetTypes())
+	{
+		<li><TypeInfo Type="type"/></li>
+	}
+</ul>
+
+@code {
+	[Parameter, EditorRequired] public Assembly? Assembly{ get; set; } = null!;
+}

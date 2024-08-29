@@ -1,0 +1,21 @@
+﻿@using System.Reflection
+<h3>Type name: @Type.FullName</h3>
+<p></p>
+<h4>Properties:</h4>
+<ul>
+	@foreach (var property in Type.GetProperties())
+	{
+		<li>@property.PropertyType.FullName @property.Name</li>
+	}
+</ul>
+
+<h4>Methods:</h4>
+<ul>
+	@foreach (var method in Type.GetMethods())
+	{
+		<li>@method.ReturnType.FullName @method.Name</li>
+	}
+</ul>
+@code {
+	[Parameter, EditorRequired] public Type Type { get; set; } = null!;
+}
