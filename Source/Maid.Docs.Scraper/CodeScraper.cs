@@ -57,12 +57,91 @@ public class DocConfig
 	public List<string> Projects { get; set; }
 	public string OutputDir { get; set; }
 }
+public class XmlDocMember(string Content);
+/// <summary>
+/// Represents <summary></summary> tag in xml documentation
+/// </summary>
+/// <param name="Content">Content of the tag</param>
+public class XmlSummaryDocMember(string Content) : XmlDocMember(Content);
+/// <summary>
+/// Represents <param></param> tag in xml documentation
+/// </summary>
+/// <param name="Name">Name of the parameter</param>
+/// <param name="Content">Content of the tag</param>
+public class XmlParamDocMember(string Name, string Content) : XmlDocMember(Content);
+/// <summary>
+/// Represents <returns></returns> tag in xml documentation
+/// </summary>
+/// <param name="Content">Content of the tag</param>
+public class XmlReturnsDocMember(string Content) : XmlDocMember(Content);
+/// <summary>
+/// Represents <example></example> tag in xml documentation
+/// </summary>
+/// <param name="Content">Content of the tag</param>
+public class XmlExampleDocMember(string Content) : XmlDocMember(Content);
+/// <summary>
+/// Represents <remarks></remarks> tag in xml documentation
+/// </summary>
+/// <param name="Content">Content of the tag</param>
+public class XmlRemarksDocMember(string Content) : XmlDocMember(Content);
+/// <summary>
+/// Represents <exception></exception> tag in xml documentation
+/// </summary>
+/// <param name="Name">Name of the exception</param>
+/// <param name="Content">Content of the tag</param>
+public class XmlExceptionDocMember(string Name, string Content) : XmlDocMember(Content);
+
+public class XmlSeeAlsoDocMember(string Content) : XmlDocMember(Content);
+public class XmlIncludeDocMember(string Content) : XmlDocMember(Content);
+public enum EMemberType
+{
+	CTOR,
+	METHOD,
+	PROPERTY,
+	EVENT,
+	FIELD,
+	DELEGATE
+
+}
+public class TypeMemberDoc(EMemberType Type)
+{
+	public string Id { get; set; } = string.Empty;
+	public string FullName { get; set; } = string.Empty;
+	public string XMLDoc { get; set; } = string.Empty;
+
+	public static TypeMemberDoc From(string id)
+	{
+		if(id.StartsWith("M:"))
+			return new MethodDoc();
+		if (id.StartsWith("P:"))
+			return new PropertyDoc();
+		if (id.StartsWith("E:"))
+			return new EventDoc();
+		if (id.StartsWith("F:"))
+			return new FieldDoc();
+		throw new Exception("Invalid member id");
+
+	}
+}
+public class ConstructorDoc() : TypeMemberDoc(EMemberType.CTOR);
+public class MethodDoc() : TypeMemberDoc(EMemberType.METHOD);
+public class PropertyDoc() : TypeMemberDoc(EMemberType.PROPERTY);
+public class EventDoc() : TypeMemberDoc(EMemberType.EVENT);
+public class FieldDoc() : TypeMemberDoc(EMemberType.FIELD);
+public class DelegateDoc() : TypeMemberDoc(EMemberType.DELEGATE);
 
 public class TypeDoc
 {
-	public string TypeName { get; set; }
-	public string BaseTypeName { get; set; }
+	public string TypeName { get; set; } = string.Empty;
+	public string Namespace { get; set; } = string.Empty;
+	public string AssemblyName { get; set; } = string.Empty;
+	public string PackageSlug { get; set; } = string.Empty;
 	public List<TypeDoc> InheritedTypes { get; set; } = new();
+
+	public List<TypeMemberDoc> Members { get; set; }
+
+
+
 	public string XmlDocId { get; set; }
 	public string XmlDocText { get; set; }
 	public string JsonDocText { get; set; }
