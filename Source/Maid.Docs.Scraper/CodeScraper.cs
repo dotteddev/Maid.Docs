@@ -3,15 +3,16 @@ using System.IO;
 using System.Reflection;
 using System.Xml;
 using System.Xml.Linq;
-using System.Xml.Serialization;
 
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.MSBuild;
 
-using Newtonsoft.Json;
-using Newtonsoft.Json.Linq;
+//using Newtonsoft.Json;
+//using Newtonsoft.Json.Linq;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 
 using TestAssembly;
 
@@ -19,6 +20,10 @@ namespace Maid.Docs.Scraper;
 
 public class CodeScraper
 {
+
+	static List<ISymbol> _memberDeclarations = [];
+	static Dictionary<string, List<object>> _membersByNamespace = [];
+
 	public static async Task ScrapeCodeAsync(DocConfig config)
 	{
 		var workspace = MSBuildWorkspace.Create();
@@ -26,29 +31,137 @@ public class CodeScraper
 		{
 			var project = await workspace.OpenProjectAsync(projectPath);
 			var compilation = await project.GetCompilationAsync();
+			if (compilation is null) continue;
 			var syntaxTrees = compilation.SyntaxTrees;
 
+			foreach (var syntaxtree in syntaxTrees)
+			{
+				var semanticmodel = compilation.GetSemanticModel(syntaxtree);
+				var root = await syntaxtree.GetRootAsync();
+				var members = root.DescendantNodes().OfType<MemberDeclarationSyntax>();
 
-			var symbols = await ProcessSyntaxTrees(syntaxTrees, compilation);
-
-			using var sw = new StreamWriter(Path.Combine(config.OutputDir,project.AssemblyName) + ".json");
-			sw.WriteLine(JsonConvert.SerializeObject(new { AssemblyName = project.AssemblyName, Types = symbols }));
+				_memberDeclarations.AddRange(members.Select(m => semanticmodel.GetDeclaredSymbol(m)!));
+			}
 		}
-		
-	}
-	public static async Task<IEnumerable<TypeDoc>> ProcessSyntaxTrees(IEnumerable<SyntaxTree> syntaxTrees, Compilation compilation)
-	{
-		var nodes = new List<ISymbol>();
-		foreach (var syntaxTree in syntaxTrees)
+
+		foreach (var member in _memberDeclarations.Where(m => m is not null))
 		{
-			//get class symbol
-			var semanticModel = compilation.GetSemanticModel(syntaxTree);
+			object serializedSymbol;
+			//if (typeName.EndsWith("NamespaceSymbol"))
+			//{
+			//	Console.WriteLine($"Namespace: {member.ContainingNamespace}.{member.Name}");
+			//	continue;
+			//}
 
-			//get xml documentation from symbol
-			var root = await syntaxTree.GetRootAsync();
-			nodes.AddRange([.. root.DescendantNodes().Where(dn => dn is ClassDeclarationSyntax or RecordDeclarationSyntax).Select(c => semanticModel.GetDeclaredSymbol(c))]);
+			if (member is INamedTypeSymbol typeSymbol)
+			{
+				//serializedSymbol = new
+				//{
+				//	typeSymbol.Name,
+				//	typeSymbol.ContainingNamespace,
+				//	typeSymbol.Interfaces,
+				//	xmlid = typeSymbol.GetDocumentationCommentId(),
+				//	xml = typeSymbol.GetDocumentationCommentXml(),
+				//	//attrs = typeSymbol.GetAttributes(),
+				//	members = typeSymbol.GetMembers().Select(n=>n.Name),
+				//	baseTypeName = typeSymbol.BaseType?.Name,
+				//	typekind = typeSymbol.TypeKind,
+				//	typeParams = typeSymbol.TypeParameters.Select(tp=>tp.Name),
+				//	typeSymbol.DeclaredAccessibility,
+				//	allinterfaces = typeSymbol.AllInterfaces.Select(tp => tp.Name),
+				//	typeSymbol.Arity, 
+				//	ctors = typeSymbol.Constructors.Select(tp => tp.Name),
+				//	containingModule = typeSymbol.ContainingModule.Name,
+				//	containingSymbol = typeSymbol.ContainingSymbol.Name,
+				//	typeSymbol.InstanceConstructors,
+				//	typeSymbol.IsAbstract,
+				//	typeSymbol.IsAnonymousType,
+				//	typeSymbol.IsSealed,
+				//	typeSymbol.IsStatic,
+				//	typeSymbol.IsValueType,
+				//	typeSymbol.MetadataName,
+				//	typeSymbol.OriginalDefinition,
+				//	typeSymbol.TypeArguments
+				//};
+				serializedSymbol = JsonSerializer.Serialize(typeSymbol);
+			}
+			else if (member is IMethodSymbol methodSymbol)
+			{
+				//serializedSymbol = new
+				//{
+				//	methodSymbol.Name,
+				//	methodSymbol.ContainingNamespace,
+				//	xmlid = methodSymbol.GetDocumentationCommentId(),
+				//	xml = methodSymbol.GetDocumentationCommentXml(),
+				//	//attrs = methodSymbol.GetAttributes(),
+				//	methodSymbol.Parameters,
+				//	methodSymbol.ReturnType,
+				//	methodSymbol.TypeParameters,
+				//	methodSymbol.DeclaredAccessibility,
+				//	methodSymbol.IsAbstract,
+				//	methodSymbol.IsAsync,
+				//	methodSymbol.IsExtensionMethod,
+				//	methodSymbol.IsGenericMethod,
+				//	methodSymbol.IsImplicitlyDeclared,
+				//	methodSymbol.IsOverride,
+				//	methodSymbol.IsSealed,
+				//	methodSymbol.IsStatic,
+				//	methodSymbol.IsVirtual,
+				//	methodSymbol.MetadataName,
+				//	methodSymbol.OriginalDefinition,
+				//	methodSymbol.OverriddenMethod,
+				//	methodSymbol.TypeArguments
+				//};
+				serializedSymbol = JsonSerializer.Serialize(methodSymbol);
+			}
+			else if (member is IPropertySymbol propertySymbol)
+			{
+				serializedSymbol = new
+				{
+					propertySymbol.Name,
+					propertySymbol.ContainingNamespace,
+					xmlid = propertySymbol.GetDocumentationCommentId(),
+					xml = propertySymbol.GetDocumentationCommentXml(),
+					attrs = propertySymbol.GetAttributes(),
+					propertySymbol.Parameters,
+					propertySymbol.DeclaredAccessibility,
+					propertySymbol.IsAbstract,
+					propertySymbol.IsIndexer,
+					propertySymbol.IsReadOnly,
+					propertySymbol.IsSealed,
+					propertySymbol.IsStatic,
+					propertySymbol.IsVirtual,
+					propertySymbol.MetadataName,
+					propertySymbol.OriginalDefinition,
+				};
+			}
+			else
+			{
+				serializedSymbol = new
+				{
+					member.Name,
+					member.ContainingNamespace,
+					xmlid = member.GetDocumentationCommentId(),
+					xml = member.GetDocumentationCommentXml(),
+					attrs = member.GetAttributes(),
+					member.DeclaredAccessibility,
+					member.MetadataName,
+					member.OriginalDefinition,
+				};
+			}
+			var namespc = member.ContainingNamespace.ToString();
+			if (!_membersByNamespace.TryGetValue(namespc, out List<object>? value))
+			{
+				value = new List<object>();
+				_membersByNamespace[namespc] = value;
+			}
+			value.Add(serializedSymbol);
+
 		}
-		return nodes.Select(s => TypeDoc.FromSymbol(s));
+		foreach(var (ns, members) in _membersByNamespace)
+		{
+			File.WriteAllText(Path.Combine(config.OutputDir, $"{ns.Replace("<global namespace>", "global").Replace(" ", "-")}.json"), Newtonsoft.Json.JsonConvert.SerializeObject(members, new Newtonsoft.Json.JsonSerializerSettings() { ReferenceLoopHandling = Newtonsoft.Json.ReferenceLoopHandling.Ignore }));
+		}
 	}
 }
 
@@ -150,17 +263,17 @@ public class TypeDoc
 	{
 		XElement xmlel = XElement.Parse(symbol.GetDocumentationCommentXml()!);
 
-		JObject jsonObj = new JObject(new JProperty(xmlel.Name.LocalName, xmlel.Value));
+		//JObject jsonObj = new JObject(new JProperty(xmlel.Name.LocalName, xmlel.Value));
 
-		Console.WriteLine(jsonObj.ToString());
+		//Console.WriteLine(jsonObj.ToString());
 		return new TypeDoc
-			{
-				TypeName = symbol.Name,
-				XmlDocId = symbol.GetDocumentationCommentId()!,
-				//XmlDocText = symbol.GetDocumentationCommentXml(),
-				JsonDocText = xmlel.ToString(),
+		{
+			TypeName = symbol.Name,
+			XmlDocId = symbol.GetDocumentationCommentId()!,
+			//XmlDocText = symbol.GetDocumentationCommentXml(),
+			JsonDocText = xmlel.ToString(),
 			//InheritedTypes = FromSymbol((symbol as INamedTypeSymbol)?.Interfaces),
-			};
+		};
 	}
 
 	public static List<TypeDoc> FromSymbol(IEnumerable<ISymbol>? symbols)
