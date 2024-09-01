@@ -9,14 +9,16 @@ using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.MSBuild;
 
-//using Newtonsoft.Json;
-//using Newtonsoft.Json.Linq;
-using System.Text.Json;
-using System.Text.Json.Serialization;
+using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
+//using System.Text.Json;
+//using System.Text.Json.Serialization;
 
 using TestAssembly;
+using Maid.Docs.Shared;
 
 namespace Maid.Docs.Scraper;
+
 
 public class CodeScraper
 {
@@ -26,6 +28,8 @@ public class CodeScraper
 
 	public static async Task ScrapeCodeAsync(DocConfig config)
 	{
+		var docs = new Shared.Docs();
+		docs.DocId = "Maid.Docs";
 		var workspace = MSBuildWorkspace.Create();
 		foreach (var projectPath in config.Projects)
 		{
@@ -46,7 +50,7 @@ public class CodeScraper
 
 		foreach (var member in _memberDeclarations.Where(m => m is not null))
 		{
-			object serializedSymbol;
+			DocsMember docsMember = new DocsMember();
 			//if (typeName.EndsWith("NamespaceSymbol"))
 			//{
 			//	Console.WriteLine($"Namespace: {member.ContainingNamespace}.{member.Name}");
@@ -55,116 +59,90 @@ public class CodeScraper
 
 			if (member is INamedTypeSymbol typeSymbol)
 			{
-				//serializedSymbol = new
-				//{
-				//	typeSymbol.Name,
-				//	typeSymbol.ContainingNamespace,
-				//	typeSymbol.Interfaces,
-				//	xmlid = typeSymbol.GetDocumentationCommentId(),
-				//	xml = typeSymbol.GetDocumentationCommentXml(),
-				//	//attrs = typeSymbol.GetAttributes(),
-				//	members = typeSymbol.GetMembers().Select(n=>n.Name),
-				//	baseTypeName = typeSymbol.BaseType?.Name,
-				//	typekind = typeSymbol.TypeKind,
-				//	typeParams = typeSymbol.TypeParameters.Select(tp=>tp.Name),
-				//	typeSymbol.DeclaredAccessibility,
-				//	allinterfaces = typeSymbol.AllInterfaces.Select(tp => tp.Name),
-				//	typeSymbol.Arity, 
-				//	ctors = typeSymbol.Constructors.Select(tp => tp.Name),
-				//	containingModule = typeSymbol.ContainingModule.Name,
-				//	containingSymbol = typeSymbol.ContainingSymbol.Name,
-				//	typeSymbol.InstanceConstructors,
-				//	typeSymbol.IsAbstract,
-				//	typeSymbol.IsAnonymousType,
-				//	typeSymbol.IsSealed,
-				//	typeSymbol.IsStatic,
-				//	typeSymbol.IsValueType,
-				//	typeSymbol.MetadataName,
-				//	typeSymbol.OriginalDefinition,
-				//	typeSymbol.TypeArguments
-				//};
-				serializedSymbol = JsonSerializer.Serialize(typeSymbol);
+				docsMember = new TypeDocs(docs.DocId, GetDocsId(typeSymbol))
+					.Configure(type =>
+					{
+						type.TypeName = typeSymbol.Name;
+						type.Namespace = typeSymbol.ContainingNamespace is not null? DocsMemberRef.Create(docs.DocId, typeSymbol.ContainingNamespace.ToString()!) : string.Empty;
+						type.AssemblyName = typeSymbol.ContainingAssembly.Name;
+						type.AccessModifier = Helpers.AccessModifierFrom(typeSymbol.DeclaredAccessibility);
+						type.InheritedType = typeSymbol.BaseType is not null? DocsMemberRef.Create(docs.DocId, GetDocsId(typeSymbol.BaseType)) : string.Empty;
+					});
 			}
 			else if (member is IMethodSymbol methodSymbol)
 			{
-				//serializedSymbol = new
-				//{
-				//	methodSymbol.Name,
-				//	methodSymbol.ContainingNamespace,
-				//	xmlid = methodSymbol.GetDocumentationCommentId(),
-				//	xml = methodSymbol.GetDocumentationCommentXml(),
-				//	//attrs = methodSymbol.GetAttributes(),
-				//	methodSymbol.Parameters,
-				//	methodSymbol.ReturnType,
-				//	methodSymbol.TypeParameters,
-				//	methodSymbol.DeclaredAccessibility,
-				//	methodSymbol.IsAbstract,
-				//	methodSymbol.IsAsync,
-				//	methodSymbol.IsExtensionMethod,
-				//	methodSymbol.IsGenericMethod,
-				//	methodSymbol.IsImplicitlyDeclared,
-				//	methodSymbol.IsOverride,
-				//	methodSymbol.IsSealed,
-				//	methodSymbol.IsStatic,
-				//	methodSymbol.IsVirtual,
-				//	methodSymbol.MetadataName,
-				//	methodSymbol.OriginalDefinition,
-				//	methodSymbol.OverriddenMethod,
-				//	methodSymbol.TypeArguments
-				//};
-				serializedSymbol = JsonSerializer.Serialize(methodSymbol);
+				docsMember = new MethodDocs(docs.DocId, GetDocsId(methodSymbol))
+					.Configure(method =>
+					{
+						method.MethodName = methodSymbol.Name;
+						method.ReturnType = DocsMemberRef.Create(docs.DocId, GetDocsId(methodSymbol.ReturnType));
+						method.AccessModifier = Helpers.AccessModifierFrom(methodSymbol.DeclaredAccessibility);
+						method.Attributes = methodSymbol.GetAttributes().Select(attr => new Shared.Attribute(attr.AttributeClass.Name, attr.ConstructorArguments.Select(arg => (arg.Type.Name, arg.Value.ToString())).ToArray())).ToList();
+					});
+
 			}
-			else if (member is IPropertySymbol propertySymbol)
-			{
-				serializedSymbol = new
-				{
-					propertySymbol.Name,
-					propertySymbol.ContainingNamespace,
-					xmlid = propertySymbol.GetDocumentationCommentId(),
-					xml = propertySymbol.GetDocumentationCommentXml(),
-					attrs = propertySymbol.GetAttributes(),
-					propertySymbol.Parameters,
-					propertySymbol.DeclaredAccessibility,
-					propertySymbol.IsAbstract,
-					propertySymbol.IsIndexer,
-					propertySymbol.IsReadOnly,
-					propertySymbol.IsSealed,
-					propertySymbol.IsStatic,
-					propertySymbol.IsVirtual,
-					propertySymbol.MetadataName,
-					propertySymbol.OriginalDefinition,
-				};
-			}
-			else
-			{
-				serializedSymbol = new
-				{
-					member.Name,
-					member.ContainingNamespace,
-					xmlid = member.GetDocumentationCommentId(),
-					xml = member.GetDocumentationCommentXml(),
-					attrs = member.GetAttributes(),
-					member.DeclaredAccessibility,
-					member.MetadataName,
-					member.OriginalDefinition,
-				};
-			}
-			var namespc = member.ContainingNamespace.ToString();
-			if (!_membersByNamespace.TryGetValue(namespc, out List<object>? value))
-			{
-				value = new List<object>();
-				_membersByNamespace[namespc] = value;
-			}
-			value.Add(serializedSymbol);
+			//else if (member is IPropertySymbol propertySymbol)
+			//{
+			//	serializedSymbol = new
+			//	{
+			//		propertySymbol.Name,
+			//		propertySymbol.ContainingNamespace,
+			//		xmlid = propertySymbol.GetDocumentationCommentId(),
+			//		xml = propertySymbol.GetDocumentationCommentXml(),
+			//		attrs = propertySymbol.GetAttributes(),
+			//		propertySymbol.Parameters,
+			//		propertySymbol.DeclaredAccessibility,
+			//		propertySymbol.IsAbstract,
+			//		propertySymbol.IsIndexer,
+			//		propertySymbol.IsReadOnly,
+			//		propertySymbol.IsSealed,
+			//		propertySymbol.IsStatic,
+			//		propertySymbol.IsVirtual,
+			//		propertySymbol.MetadataName,
+			//		propertySymbol.OriginalDefinition,
+			//	};
+			//}
+			//else
+			//{
+			//	serializedSymbol = new
+			//	{
+			//		member.Name,
+			//		member.ContainingNamespace,
+			//		xmlid = member.GetDocumentationCommentId(),
+			//		xml = member.GetDocumentationCommentXml(),
+			//		attrs = member.GetAttributes(),
+			//		member.DeclaredAccessibility,
+			//		member.MetadataName,
+			//		member.OriginalDefinition,
+			//	};
+			//}
+			
+			docs.DocsMembers.Add(docsMember);
 
 		}
-		foreach(var (ns, members) in _membersByNamespace)
-		{
-			File.WriteAllText(Path.Combine(config.OutputDir, $"{ns.Replace("<global namespace>", "global").Replace(" ", "-")}.json"), Newtonsoft.Json.JsonConvert.SerializeObject(members, new Newtonsoft.Json.JsonSerializerSettings() { ReferenceLoopHandling = Newtonsoft.Json.ReferenceLoopHandling.Ignore }));
-		}
+
+		File.WriteAllText(Path.Combine(config.OutputDir, docs.DocId) + ".json", JsonConvert.SerializeObject(docs));
 	}
+	public static string GetDocsId(ISymbol symbol)
+	{
+		return symbol.GetDocumentationCommentId() ?? $"{symbol.ContainingNamespace}.{symbol.Name}";
+	}
+
 }
 
+public static class Helpers
+{
+	public static AccessModifier AccessModifierFrom(Accessibility accessibility) => accessibility switch
+	{
+		Accessibility.Public => AccessModifier.Public,
+		Accessibility.Protected => AccessModifier.Protected,
+		Accessibility.Private => AccessModifier.Private,
+		Accessibility.Internal => AccessModifier.Internal,
+		Accessibility.ProtectedOrInternal => AccessModifier.ProtectedOrInternal,
+		Accessibility.ProtectedAndInternal => AccessModifier.ProtectedAndInternal,
+		_ => AccessModifier.Private
+	};
+}
 public class DocConfig
 {
 	public List<string> Projects { get; set; }

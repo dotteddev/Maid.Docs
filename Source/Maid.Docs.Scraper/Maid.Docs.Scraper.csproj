@@ -13,6 +13,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\Maid.Docs.Shared\Maid.Docs.Shared.csproj" />
     <ProjectReference Include="..\TestAssembly\TestAssembly.csproj" />
   </ItemGroup>
 
