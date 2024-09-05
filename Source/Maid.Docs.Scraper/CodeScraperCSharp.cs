@@ -1,8 +1,9 @@
-﻿using System.Data.SqlTypes;
-using System.IO;
-using System.Reflection;
-using System.Xml;
+﻿using System.Xml;
 using System.Xml.Linq;
+//using System.Text.Json;
+//using System.Text.Json.Serialization;
+
+using Maid.Docs.Shared;
 
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
@@ -10,23 +11,82 @@ using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.MSBuild;
 
 using Newtonsoft.Json;
-using Newtonsoft.Json.Linq;
-//using System.Text.Json;
-//using System.Text.Json.Serialization;
 
-using TestAssembly;
-using Maid.Docs.Shared;
-
-namespace Maid.Docs.Scraper;
+namespace Maid.Docs.Scraper.CSharp;
 
 
-public class CodeScraper
+
+public class ScraperVisitor(SemanticModel Model) : SymbolVisitor
+{
+	public List<string> Namespaces { get; set; }
+	public List<object> Types { get; set; }
+
+	
+	public override void VisitNamespace(INamespaceSymbol symbol)
+	{
+		Namespaces.Add(symbol.Name);
+		base.VisitNamespace(symbol);
+	}
+	public override void VisitField(IFieldSymbol symbol)
+	{
+		base.VisitField(symbol);
+	}
+	public override void VisitMethod(IMethodSymbol symbol)
+	{
+		base.VisitMethod(symbol);
+	}
+	public override void VisitProperty(IPropertySymbol symbol)
+	{
+		base.VisitProperty(symbol);
+	}
+	public override void VisitNamedType(INamedTypeSymbol symbol)
+	{
+		
+		base.VisitNamedType(symbol);
+	}
+}
+
+public class AddXmlCommentRewriter : CSharpSyntaxRewriter
+{
+	public Compilation Compilation { get; set; }
+	public SemanticModel SemanticModel { get; set; }
+
+	public override SyntaxNode? VisitDocumentationCommentTrivia(DocumentationCommentTriviaSyntax node)
+	{
+		//check whether node.content contains <trackingId></trackingId> tag
+		if (node.Content.Any(c => c is XmlElementSyntax elem && elem.StartTag.Name.LocalName.ValueText == "trackingId"))
+		{
+			Console.WriteLine("trackingId already exists");
+			return node;
+		}
+		//add <trackingId></trackingId> tag
+		var newContent = node.Content.Add(SyntaxFactory.XmlElement("trackingId", [ SyntaxFactory.XmlText(Guid.NewGuid().ToString())]));
+		return node.Update(newContent, node.EndOfComment);
+	}
+
+}
+public class CodeScraperCSharp
 {
 
 	static List<ISymbol> _memberDeclarations = [];
 	static Dictionary<string, List<object>> _membersByNamespace = [];
+	public static async Task ScrapeAllTypes(DocsConfig config, CancellationToken token)
+	{
+		var workspace = MSBuildWorkspace.Create();
+		foreach (var projectPath in config.Projects)
+		{
+			var project = await workspace.OpenProjectAsync(projectPath);
 
-	public static async Task ScrapeCodeAsync(DocConfig config)
+			foreach (var document in project.Documents)
+			{
+				var semanticModel = await document.GetSemanticModelAsync(token);
+				if(semanticModel is null) continue;
+				//var walker = new NamedTypeSymbolVisitor(semanticModel) { };
+			}
+
+		}
+	}
+	public static async Task ScrapeCodeAsync(DocsConfig config)
 	{
 		var docs = new Shared.Docs();
 		docs.DocId = "Maid.Docs";
@@ -63,10 +123,10 @@ public class CodeScraper
 					.Configure(type =>
 					{
 						type.TypeName = typeSymbol.Name;
-						type.Namespace = typeSymbol.ContainingNamespace is not null? DocsMemberRef.Create(docs.DocId, typeSymbol.ContainingNamespace.ToString()!) : string.Empty;
+						type.Namespace = typeSymbol.ContainingNamespace is not null ? DocsMemberRef.Create(docs.DocId, typeSymbol.ContainingNamespace.ToString()!) : string.Empty;
 						type.AssemblyName = typeSymbol.ContainingAssembly.Name;
 						type.AccessModifier = Helpers.AccessModifierFrom(typeSymbol.DeclaredAccessibility);
-						type.InheritedType = typeSymbol.BaseType is not null? DocsMemberRef.Create(docs.DocId, GetDocsId(typeSymbol.BaseType)) : string.Empty;
+						type.InheritedType = typeSymbol.BaseType is not null ? DocsMemberRef.Create(docs.DocId, GetDocsId(typeSymbol.BaseType)) : string.Empty;
 					});
 			}
 			else if (member is IMethodSymbol methodSymbol)
@@ -116,7 +176,7 @@ public class CodeScraper
 			//		member.OriginalDefinition,
 			//	};
 			//}
-			
+
 			docs.DocsMembers.Add(docsMember);
 
 		}
@@ -143,7 +203,7 @@ public static class Helpers
 		_ => AccessModifier.Private
 	};
 }
-public class DocConfig
+public class DocsConfig
 {
 	public List<string> Projects { get; set; }
 	public string OutputDir { get; set; }
@@ -202,7 +262,7 @@ public class TypeMemberDoc(EMemberType Type)
 
 	public static TypeMemberDoc From(string id)
 	{
-		if(id.StartsWith("M:"))
+		if (id.StartsWith("M:"))
 			return new MethodDoc();
 		if (id.StartsWith("P:"))
 			return new PropertyDoc();
