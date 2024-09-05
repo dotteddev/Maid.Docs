@@ -1,0 +1,11 @@
+{
+  "profiles": {
+    "Maid.Docs.Analyzer.CSharp": {
+      "commandName": "Project"
+    },
+    "Profile 1": {
+      "commandName": "DebugRoslynComponent",
+      "targetProject": "..\\TestAssembly\\TestAssembly.csproj"
+    }
+  }
+}

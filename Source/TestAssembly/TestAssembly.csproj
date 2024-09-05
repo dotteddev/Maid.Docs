@@ -8,4 +8,8 @@
     <DocumentationFile>$(OutputPath)/docs/$(AssemblyName)_doc.xml</DocumentationFile>
   </PropertyGroup>
 
+  <ItemGroup>
+    <ProjectReference Include="..\Maid.Docs.Analyzer.CSharp\Maid.Docs.Analyzer.CSharp.csproj" OutputItemType="Analyzer" />
+  </ItemGroup>
+
 </Project>
