@@ -12,7 +12,7 @@
     <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Workspaces" Version="4.11.0" />
     <PackageReference Include="Microsoft.CodeAnalysis.Workspaces.MSBuild" Version="4.11.0" />
     <ProjectReference Include="..\Maid.Docs.Scraper\Maid.Docs.Scraper.CSharp.csproj" />
-    <ProjectReference Include="..\Maid.Docs.Scraper\Maid.Docs.Scraper.csproj" />
+    <!--<ProjectReference Include="..\Maid.Docs.Scraper\Maid.Docs.Scraper.csproj" />-->
     <ProjectReference Include="..\TestAssembly\TestAssembly.csproj" />
   </ItemGroup>
 
