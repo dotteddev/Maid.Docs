@@ -1,8 +1,11 @@
 ﻿using System;
+using System.CodeDom.Compiler;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using System.Xml;
+using System.Xml.Linq;
 
 using Maid.Docs.Shared;
 
@@ -11,13 +14,19 @@ using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.MSBuild;
 
+using Newtonsoft.Json;
+
 namespace Maid.Docs.Scraper.CSharp;
 public static class Helper
 {
 	public static InternalLink GetInternalLinkForSymbol<T>(T symbol) where T : ISymbol
 	{
-
-		return new(symbol.Name, GetIdentifier<T>(symbol));
+		var identifier = GetIdentifier(symbol);
+		return new()
+		{
+			Identifier = $"{identifier.GetName()}",
+			Name = symbol.Name
+		};
 	}
 
 	public static IdentifierBase GetIdentifier<T>(T symbol) where T : ISymbol
@@ -32,42 +41,99 @@ public static class Helper
 
 	public static ClassIdentifier GetClassIdentifier(INamedTypeSymbol symbol)
 	{
-		return new(symbol.ContainingNamespace.Name, symbol.Name, symbol.ContainingAssembly.Identity.GetDisplayName());
+		return new()
+		{
+			AssemblyName = symbol.ContainingAssembly.Name,
+			Namespace = symbol.ContainingNamespace.Name,
+			Name = symbol.Name
+		};
 	}
 	public static InterfaceIdentifier GetInterfaceIdentifier(INamedTypeSymbol symbol)
 	{
-		return new(symbol.ContainingNamespace.Name, symbol.Name, symbol.ContainingAssembly.Identity.GetDisplayName());
+		return new()
+		{
+			AssemblyName = symbol.ContainingAssembly.Name,
+			Namespace = symbol.ContainingNamespace.Name,
+			Name = symbol.Name
+		};
 	}
 
 	public static MethodIdentifier GetMethodIdentifier(IMethodSymbol symbol)
 	{
-		return new(GetClassIdentifier(symbol.ContainingType), symbol.Name);
+		var classIdentifier = GetClassIdentifier(symbol.ContainingType);
+		return new()
+		{
+			AssemblyName = classIdentifier.AssemblyName,
+			Namespace = classIdentifier.Namespace,
+			Name = symbol.Name,
+			Parent = GetClassIdentifier(symbol.ContainingType)
+		};
+	}
+
+	public static ConstructorIdentifier GetConstructorIdentifier(IMethodSymbol symbol)
+	{
+		var classIdentifier = GetClassIdentifier(symbol.ContainingType);
+		return new()
+		{
+			AssemblyName = classIdentifier.AssemblyName,
+			Namespace = classIdentifier.Namespace,
+			Name = symbol.Name,
+			Parent = GetClassIdentifier(symbol.ContainingType)
+		};
 	}
 
 	public static FieldIdentifier GetFieldIdentifier(IFieldSymbol symbol)
 	{
-		return new(GetClassIdentifier(symbol.ContainingType), symbol.Name);
+		var classIdentifier = GetClassIdentifier(symbol.ContainingType);
+		return new()
+		{
+			AssemblyName = classIdentifier.AssemblyName,
+			Namespace = classIdentifier.Namespace,
+			Name = symbol.Name,
+			Parent = GetClassIdentifier(symbol.ContainingType)
+		};
 	}
 
 	public static PropertyIdentifier GetPropertyIdentifier(IPropertySymbol symbol)
 	{
-		return new(GetClassIdentifier(symbol.ContainingType), symbol.Name);
+		var classIdentifier = GetClassIdentifier(symbol.ContainingType);
+		return new()
+		{
+			AssemblyName = classIdentifier.AssemblyName,
+			Namespace = classIdentifier.Namespace,
+			Name = symbol.Name,
+			Parent = GetClassIdentifier(symbol.ContainingType)
+		};
 	}
 
 	public static InternalDocumentationMemberId GetInternalDocumentationMemberId(ISymbol symbol)
 	{
-		return new(symbol.Name, GetInternalLinkForSymbol(symbol));
+		return new()
+		{
+			FriendlyName = symbol.Name,
+			Link = GetInternalLinkForSymbol(symbol)
+		};
 	}
 
 }
 public class DocumentationBuilder
 {
-	private Documentation Documentation { get; set; }
+	private Documentation Documentation { get; set; } = new();
+	private static string GetDocumentationJson(string xml)
+	{
+		List<string> docMembers = [];
+		if (string.IsNullOrEmpty(xml) is false)
+		{
+
+			var xmlelement = XElement.Parse(xml);
+			docMembers.AddRange(xmlelement.Nodes().Select(node => node.ToString())/*.Select(node => JsonConvert.SerializeXNode(node))*/);
+		}
+		return JsonConvert.SerializeObject(new { members = docMembers });
+
+	}
 
 	public async Task<Documentation> BuildDocumentation(DocsConfig config)
 	{
-
-		Documentation = new Documentation();
 
 		foreach (var projectPath in config.Projects)
 		{
@@ -92,20 +158,30 @@ public class DocumentationBuilder
 					Console.WriteLine($"Found class {cds.TryGetInferredMemberName()}");
 					if (classSymbol is null) continue;
 
-					var classDocumentation = new ClassDocumentation(
-						Helper.GetClassIdentifier(classSymbol),
-						Helper.GetInternalDocumentationMemberId(classSymbol));
+					//create variable that contains only content of XML node 
+
+
+
+					var classDocumentation = new ClassDocumentation()
+					{
+						Identifier = Helper.GetClassIdentifier(classSymbol),
+						DocumentationMemberIdBase = Helper.GetInternalDocumentationMemberId(classSymbol),
+						DocumentationXML = classSymbol.GetDocumentationCommentXml() ?? "###--NO_DOCUMENTATION--###",
+						DocumentationJson = //get leading trivia xml 
+					};
 
 					var members = cds.Members;
 
 					foreach (var member in members)
 					{
+
 						var symbol = compilation.GetSemanticModel(syntaxTree).GetDeclaredSymbol(member);
 						if (symbol is null)
 						{
 							//Console.WriteLine($"Symbol of kind '{Enum.GetName(typeof(SyntaxKind), member.Kind())}' with name '{member.TryGetInferredMemberName()}' with syntaxtree '{member.SyntaxTree}' could not be parsed");
 							continue;
 						}
+						var docXml = symbol.GetDocumentationCommentXml() ?? "###--NO_DOCUMENTATION--###";
 						if (member is FieldDeclarationSyntax fds)
 						{
 							var fieldSymbol = symbol as IFieldSymbol;
@@ -115,22 +191,35 @@ public class DocumentationBuilder
 								continue;
 							}
 
-							var fieldDocumentation = new FieldDocumentation(
-								Helper.GetFieldIdentifier(fieldSymbol),
-								Helper.GetInternalDocumentationMemberId(symbol))
+							var fieldDocumentation = new FieldDocumentation()
 							{
-								Accessibility = Enum.GetName(typeof(Accessibility), symbol.DeclaredAccessibility) ?? "###--INVALID_ACCESIBILITY--###",
-								IsStatic = symbol.IsStatic,
-								IsAbstract = symbol.IsAbstract,
-								IsSealed = symbol.IsSealed,
-								IsVirtual = symbol.IsVirtual,
-								IsPartial = false,
+								Identifier = Helper.GetFieldIdentifier(fieldSymbol),
+								Accessibility = Enum.GetName(typeof(Accessibility), fieldSymbol.DeclaredAccessibility) ?? "###--INVALID_ACCESIBILITY--###",
 								FieldType = Helper.GetIdentifier(fieldSymbol.Type),
-								DocumentationXML = symbol.GetDocumentationCommentXml() ?? "###--NO_DOCUMENTATION--###",
-
+								IsStatic = fieldSymbol.IsStatic,
+								IsAbstract = fieldSymbol.IsAbstract,
+								IsSealed = fieldSymbol.IsSealed,
+								IsVirtual = fieldSymbol.IsVirtual,
+								IsPartial = false,
+								DocumentationMemberIdBase = Helper.GetInternalDocumentationMemberId(fieldSymbol),
+								DocumentationXML = docXml,
+								DocumentationJson = GetDocumentationJson(docXml)
 							};
+							//	Helper.GetFieldIdentifier(fieldSymbol),
+							//	Helper.GetInternalDocumentationMemberId(symbol))
+							//{
+							//	Accessibility = Enum.GetName(typeof(Accessibility), symbol.DeclaredAccessibility) ?? "###--INVALID_ACCESIBILITY--###",
+							//	IsStatic = symbol.IsStatic,
+							//	IsAbstract = symbol.IsAbstract,
+							//	IsSealed = symbol.IsSealed,
+							//	IsVirtual = symbol.IsVirtual,
+							//	IsPartial = false,
+							//	FieldType = Helper.GetIdentifier(fieldSymbol.Type),
+							//	DocumentationXML = symbol.GetDocumentationCommentXml() ?? "###--NO_DOCUMENTATION--###",
 
-							classDocumentation.AddTypeMember(fieldDocumentation);
+							//};
+
+							classDocumentation.TypeMembers.Add(fieldDocumentation);
 							continue;
 						}
 						else if (member is PropertyDeclarationSyntax property)
@@ -142,19 +231,33 @@ public class DocumentationBuilder
 								continue;
 							}
 
-							var propertyDocumentation = new PropertyDocumentation(
-								Helper.GetPropertyIdentifier(propertySymbol),
-								Helper.GetInternalDocumentationMemberId(symbol))
+							var propertyDocumentation = new PropertyDocumentation()
 							{
-								Accessibility = Enum.GetName(typeof(Accessibility), symbol.DeclaredAccessibility) ?? "###--INVALID_ACCESIBILITY--###",
-								IsStatic = symbol.IsStatic,
-								IsAbstract = symbol.IsAbstract,
-								IsSealed = symbol.IsSealed,
-								IsVirtual = symbol.IsVirtual,
+								Identifier = Helper.GetPropertyIdentifier(propertySymbol),
+								Accessibility = Enum.GetName(typeof(Accessibility), propertySymbol.DeclaredAccessibility) ?? "###--INVALID_ACCESIBILITY--###",
+								IsStatic = propertySymbol.IsStatic,
+								IsAbstract = propertySymbol.IsAbstract,
+								IsSealed = propertySymbol.IsSealed,
+								IsVirtual = propertySymbol.IsVirtual,
 								IsPartial = false,
+								DocumentationMemberIdBase = Helper.GetInternalDocumentationMemberId(propertySymbol),
+								DocumentationXML = docXml,
 								PropertyType = Helper.GetIdentifier(propertySymbol.Type),
-								DocumentationXML = symbol.GetDocumentationCommentXml() ?? "###--NO_DOCUMENTATION--###",
+								DocumentationJson = GetDocumentationJson(docXml),
+
 							};
+							//	Helper.GetPropertyIdentifier(propertySymbol),
+							//	Helper.GetInternalDocumentationMemberId(symbol))
+							//{
+							//	Accessibility = Enum.GetName(typeof(Accessibility), symbol.DeclaredAccessibility) ?? "###--INVALID_ACCESIBILITY--###",
+							//	IsStatic = symbol.IsStatic,
+							//	IsAbstract = symbol.IsAbstract,
+							//	IsSealed = symbol.IsSealed,
+							//	IsVirtual = symbol.IsVirtual,
+							//	IsPartial = false,
+							//	PropertyType = Helper.GetIdentifier(propertySymbol.Type),
+							//	DocumentationXML = symbol.GetDocumentationCommentXml() ?? "###--NO_DOCUMENTATION--###",
+							//};
 
 							classDocumentation.AddTypeMember(propertyDocumentation);
 							continue;
@@ -168,19 +271,33 @@ public class DocumentationBuilder
 								continue;
 							}
 
-							var methodDocumentation = new MethodDocumentation(
-								Helper.GetMethodIdentifier(methodSymbol),
-								Helper.GetInternalDocumentationMemberId(symbol))
+							var methodDocumentation = new MethodDocumentation()
 							{
-								Accessibility = Enum.GetName(typeof(Accessibility), symbol.DeclaredAccessibility) ?? "###--INVALID_ACCESIBILITY--###",
-								IsStatic = symbol.IsStatic,
-								IsAbstract = symbol.IsAbstract,
-								IsSealed = symbol.IsSealed,
-								IsVirtual = symbol.IsVirtual,
+								Identifier = Helper.GetMethodIdentifier(methodSymbol),
+								Accessibility = Enum.GetName(typeof(Accessibility), methodSymbol.DeclaredAccessibility) ?? "###--INVALID_ACCESIBILITY--###",
+								IsStatic = methodSymbol.IsStatic,
+								IsAbstract = methodSymbol.IsAbstract,
+								IsSealed = methodSymbol.IsSealed,
+								IsVirtual = methodSymbol.IsVirtual,
 								IsPartial = false,
 								Arguments = methodSymbol.Parameters.Select(p => (Helper.GetIdentifier(p.Type), p.Name)).ToList(),
-								DocumentationXML = symbol.GetDocumentationCommentXml() ?? "###--NO_DOCUMENTATION--###",
+								DocumentationMemberIdBase = Helper.GetInternalDocumentationMemberId(symbol),
+								DocumentationXML = docXml,
+								DocumentationJson = GetDocumentationJson(docXml),
+
 							};
+							//	Helper.GetMethodIdentifier(methodSymbol),
+							//	Helper.GetInternalDocumentationMemberId(symbol))
+							//{
+							//	Accessibility = Enum.GetName(typeof(Accessibility), symbol.DeclaredAccessibility) ?? "###--INVALID_ACCESIBILITY--###",
+							//	IsStatic = symbol.IsStatic,
+							//	IsAbstract = symbol.IsAbstract,
+							//	IsSealed = symbol.IsSealed,
+							//	IsVirtual = symbol.IsVirtual,
+							//	IsPartial = false,
+							//	Arguments = methodSymbol.Parameters.Select(p => (Helper.GetIdentifier(p.Type), p.Name)).ToList(),
+							//	DocumentationXML = symbol.GetDocumentationCommentXml() ?? "###--NO_DOCUMENTATION--###",
+							//};
 
 							classDocumentation.AddTypeMember(methodDocumentation);
 							continue;
@@ -194,19 +311,33 @@ public class DocumentationBuilder
 								continue;
 							}
 
-							var constructorDocumentation = new ConstructorDocumentation(
-								new(Helper.GetClassIdentifier(constructorSymbol.ContainingType)),
-								Helper.GetInternalDocumentationMemberId(symbol))
+							var constructorDocumentation = new ConstructorDocumentation()
 							{
-								Accessibility = Enum.GetName(typeof(Accessibility), symbol.DeclaredAccessibility) ?? "###--INVALID_ACCESIBILITY--###",
-								IsStatic = symbol.IsStatic,
-								IsAbstract = symbol.IsAbstract,
-								IsSealed = symbol.IsSealed,
-								IsVirtual = symbol.IsVirtual,
+								Identifier = Helper.GetConstructorIdentifier(constructorSymbol),
+								Accessibility = Enum.GetName(typeof(Accessibility), constructorSymbol.DeclaredAccessibility) ?? "###--INVALID_ACCESIBILITY--###",
+								IsStatic = constructorSymbol.IsStatic,
+								IsAbstract = constructorSymbol.IsAbstract,
+								IsSealed = constructorSymbol.IsSealed,
+								IsVirtual = constructorSymbol.IsVirtual,
 								IsPartial = false,
 								Arguments = constructorSymbol.Parameters.Select(p => (Helper.GetIdentifier(p.Type), p.Name)).ToList(),
-								DocumentationXML = symbol.GetDocumentationCommentXml() ?? "###--NO_DOCUMENTATION--###",
+								DocumentationMemberIdBase = Helper.GetInternalDocumentationMemberId(symbol),
+								DocumentationXML = docXml,
+								DocumentationJson = GetDocumentationJson(docXml),
+
 							};
+							//	new(Helper.GetClassIdentifier(constructorSymbol.ContainingType)),
+							//	Helper.GetInternalDocumentationMemberId(symbol))
+							//{
+							//	Accessibility = Enum.GetName(typeof(Accessibility), symbol.DeclaredAccessibility) ?? "###--INVALID_ACCESIBILITY--###",
+							//	IsStatic = symbol.IsStatic,
+							//	IsAbstract = symbol.IsAbstract,
+							//	IsSealed = symbol.IsSealed,
+							//	IsVirtual = symbol.IsVirtual,
+							//	IsPartial = false,
+							//	Arguments = constructorSymbol.Parameters.Select(p => (Helper.GetIdentifier(p.Type), p.Name)).ToList(),
+							//	DocumentationXML = symbol.GetDocumentationCommentXml() ?? "###--NO_DOCUMENTATION--###",
+							//};
 
 							classDocumentation.AddTypeMember(constructorDocumentation);
 							continue;

@@ -32,7 +32,7 @@ public class MyClass : MyBaseClass, IMyInterface
 	/// <summary>
 	/// my method
 	/// </summary>
-	/// <returns></returns>
+	/// <returns>tato metoda vrací<see cref="string"/>, takze cajk</returns>
 	/// <trackingId>38bd7f1a-3959-41df-8dde-7e5639043dc2</trackingId>
 	public string GetMyField()
 	{
